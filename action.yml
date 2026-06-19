@@ -27,47 +27,12 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Download pre-built binary
-      shell: bash
-      run: |
-        # Extract version from action ref (e.g., v0.1.0)
-        VERSION="${{ github.action_ref }}"
+    - name: Set up Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.96.0
 
-        # If no version specified, use latest release
-        if [ -z "$VERSION" ]; then
-          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/agherzan/gitlance/releases/latest | grep 'browser_download_url' | grep 'gitlance' | cut -d '"' -f 4)
-        else
-          DOWNLOAD_URL="https://github.com/agherzan/gitlance/releases/download/$VERSION/gitlance"
-        fi
-
-        if [ -z "$DOWNLOAD_URL" ]; then
-          echo "::error::Failed to determine binary download URL for version: $VERSION"
-          exit 1
-        fi
-
-        # Download and make executable
-        mkdir -p "${{ runner.temp }}/gitlance"
-        if ! curl -fsSL "$DOWNLOAD_URL" -o "${{ runner.temp }}/gitlance/gitlance"; then
-          echo "::error::Failed to download binary from $DOWNLOAD_URL"
-          exit 1
-        fi
-
-        # Download and verify checksum
-        if ! curl -fsSL "${DOWNLOAD_URL}.sha256" -o "${{ runner.temp }}/gitlance/gitlance.sha256"; then
-          echo "::error::Failed to download checksum file"
-          exit 1
-        fi
-
-        cd "${{ runner.temp }}/gitlance"
-        if ! sha256sum -c gitlance.sha256; then
-          echo "::error::Checksum verification failed"
-          exit 1
-        fi
-
-        chmod +x "${{ runner.temp }}/gitlance/gitlance"
-        echo "gitlance_binary=${{ runner.temp }}/gitlance/gitlance" >> $GITHUB_ENV
-
-    - name: Run commit checks
+    - name: Download gitlance binary and run checks
       id: run-check
       shell: bash
       env:
@@ -77,44 +42,55 @@ runs:
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
-        # Resolve base SHA with priority: provided > PR context > empty
-        if [ -n "$PROVIDED_BASE_SHA" ]; then
-          BASE_SHA="$PROVIDED_BASE_SHA"
-        else
-          BASE_SHA="$PR_BASE_SHA"
+        set -e
+
+        # Set default output
+        echo "passed=false" >> "$GITHUB_OUTPUT"
+
+        # Set binary paths
+        GITLANCE_BINARY="${{ runner.temp }}/gitlance"
+        GITLANCE_BINARY_SHA256="${{ runner.temp }}/gitlance.sha256"
+
+        # Try to download pre-built binary if action ref is specified
+        VERSION="${{ github.action_ref }}"
+        if [ -n "$VERSION" ]; then
+          DOWNLOAD_URL="https://github.com/agherzan/gitlance/releases/download/$VERSION/gitlance"
+          echo "::notice::Attempting to download release $VERSION"
+          if curl -fsSL "$DOWNLOAD_URL" -o "$GITLANCE_BINARY" && \
+             curl -fsSL "${DOWNLOAD_URL}.sha256" -o "$GITLANCE_BINARY_SHA256" && \
+             (cd "${{ runner.temp }}" && sha256sum -c gitlance.sha256 2>/dev/null); then
+            echo "::notice::Successfully downloaded and verified $VERSION"
+          else
+            echo "::warning::Download failed for $VERSION, will build from source"
+            rm -f "$GITLANCE_BINARY" "$GITLANCE_BINARY_SHA256"
+          fi
         fi
 
-        # Resolve head SHA with priority: provided > PR context > empty
-        if [ -n "$PROVIDED_HEAD_SHA" ]; then
-          HEAD_SHA="$PROVIDED_HEAD_SHA"
-        else
-          HEAD_SHA="$PR_HEAD_SHA"
+        # Build from source if binary not available
+        if [ ! -f "$GITLANCE_BINARY" ]; then
+          echo "::notice::Building from source at ${{ github.action_path }}"
+          (
+            cd "${{ github.action_path }}"
+            cargo build --release --quiet
+            cp target/release/gitlance "$GITLANCE_BINARY"
+          )
         fi
+
+        chmod +x "$GITLANCE_BINARY"
+
+        # Resolve SHAs with priority: provided > PR context > empty
+        BASE_SHA="${PROVIDED_BASE_SHA:-$PR_BASE_SHA}"
+        HEAD_SHA="${PROVIDED_HEAD_SHA:-$PR_HEAD_SHA}"
 
         # Run the binary
         if [ "$CHECK_TYPE" = "all" ]; then
-          "${{ env.gitlance_binary }}" \
-            --base-sha "$BASE_SHA" \
-            --head-sha "$HEAD_SHA" \
-            --repo .
+          "$GITLANCE_BINARY" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" --repo .
         else
-          "${{ env.pr_commit_checks_binary }}" "$CHECK_TYPE" \
-            --base-sha "$BASE_SHA" \
-            --head-sha "$HEAD_SHA" \
-            --repo .
+          "$GITLANCE_BINARY" "$CHECK_TYPE" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" --repo .
         fi
 
-        # Capture exit code
-        EXIT_CODE=$?
-
-        # Set output
-        if [ $EXIT_CODE -eq 0 ]; then
-          echo "passed=true" >> $GITHUB_OUTPUT
-        else
-          echo "passed=false" >> $GITHUB_OUTPUT
-        fi
-
-        exit $EXIT_CODE
+        # If we get here, the check passed
+        echo "passed=true" >> "$GITHUB_OUTPUT"
 
 branding:
   icon: 'check-circle'
