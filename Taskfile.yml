@@ -1,0 +1,145 @@
+# SPDX-FileCopyrightText: Canonical Ltd.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+version: '3'
+
+vars:
+  CARGO: cargo
+  RUST_VERSION: "1.96.0"
+
+tasks:
+  default:
+    desc: "Show available tasks"
+    cmds:
+      - task -l
+
+  help:
+    desc: "Show detailed help for all tasks"
+    cmds:
+      - task -l
+
+  setup:
+    desc: "Setup Rust toolchain and development environment"
+    cmds:
+      - rustup install {{ .RUST_VERSION }}
+      - rustup default {{ .RUST_VERSION }}
+      - rustup component add rustfmt clippy llvm-tools-preview
+      - echo "✓ Rust toolchain setup complete"
+
+  # Code quality
+  lint:
+    desc: "Run clippy linter"
+    deps: [setup]
+    cmds:
+      - "{{ .CARGO }} clippy --all-targets --all-features -- -D warnings"
+
+  fmt:
+    desc: "Format code with rustfmt"
+    deps: [setup]
+    cmds:
+      - "{{ .CARGO }} fmt --all"
+
+  fmt-check:
+    desc: "Check code formatting without modifying"
+    deps: [setup]
+    cmds:
+      - "{{ .CARGO }} fmt --all -- --check"
+
+  # Building
+  build:
+    desc: "Build the project"
+    deps: [setup]
+    cmds:
+      - "{{ .CARGO }} build"
+
+  build-release:
+    desc: "Build optimized release binary"
+    deps: [setup]
+    cmds:
+      - "{{ .CARGO }} build --release"
+      - echo "✓ Release binary built"
+
+  # Testing
+  test:
+    desc: "Run all tests"
+    deps: [setup]
+    cmds:
+      - "{{ .CARGO }} test"
+
+  test-single:
+    desc: "Run single test (pass TEST=test_name)"
+    deps: [setup]
+    cmds:
+      - "{{ .CARGO }} test {{ .TEST }} -- --nocapture"
+    requires:
+      vars: [TEST]
+
+  test-pattern:
+    desc: "Run tests matching pattern (pass PATTERN=test_*)"
+    deps: [setup]
+    cmds:
+      - "{{ .CARGO }} test --test integration_tests -- --nocapture {{ .PATTERN }}"
+    requires:
+      vars: [PATTERN]
+
+  coverage:
+    desc: "Run tests and generate coverage report (terminal + HTML) - fails if below 70%"
+    deps: [setup]
+    cmds:
+      - cargo llvm-cov --version 2>/dev/null || cargo install cargo-llvm-cov@0.8.7 --quiet --locked
+      - cargo llvm-cov --verbose --tests --html --output-dir coverage
+      - cargo llvm-cov report --fail-under-lines 70
+      - echo "✓ Coverage report generated in coverage/html/index.html"
+
+  # Documentation
+  doc:
+    desc: "Generate and open documentation"
+    deps: [setup]
+    cmds:
+      - "{{ .CARGO }} doc --no-deps --open"
+
+  # Compliance
+  reuse:
+    desc: "Check license compliance with reuse lint"
+    cmds:
+      - reuse lint
+
+  reuse-annotate:
+    desc: "Add license headers to files (pass PATH=path/to/file or path/to/dir)"
+    cmds:
+      - reuse annotate --license "Apache-2.0" --copyright "Canonical Ltd." --exclude-year --skip-existing --recursive "{{ .PATH }}"
+    requires:
+      vars: [PATH]
+
+  # Validation
+  validate:
+    desc: "Run all validation checks (fmt-check + lint + reuse + coverage)"
+    cmds:
+      - task: fmt-check
+      - task: lint
+      - task: reuse
+      - task: coverage
+
+  validate-fix:
+    desc: "Run validation and fix formatting issues"
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: reuse
+      - task: coverage
+
+  release:
+    desc: "Build release binary and validate"
+    cmds:
+      - task: validate
+      - task: build-release
+
+  # Cleanup
+  clean:
+    desc: "Clean up generated files and caches"
+    cmds:
+      - "{{ .CARGO }} clean"
+      - rm -rf coverage/
+      - find . -type d -name .task -exec rm -rf {} + 2>/dev/null || true
+      - echo "✓ Cleanup complete"

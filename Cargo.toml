@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Canonical Ltd.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "gitlance"
+version = "0.1.0"
+edition = "2021"
+authors = ["Andrei Gherzan <andrei.gherzan@canonical.com>"]
+license = "Apache-2.0"
+description = "Vigilance for your Git commit"
+repository = "https://github.com/agherzan/gitlance"
+publish = false
+
+[lib]
+name = "gitlance"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gitlance"
+path = "src/main.rs"
+
+[dependencies]
+git2 = "0.18"
+regex = "1.10"
+clap = { version = "4.4", features = ["derive"] }
+anyhow = "1.0"
+
+[dev-dependencies]
+tempfile = "3.8"
+assert_cmd = "2.0"
+
+[profile.release]
+# opt-level = 3: Maximum optimization level (valid range: 0-3, or "s"/"z" for size)
+# Level 3 enables all compiler optimizations including inlining and vectorization.
+# This produces faster binaries and slightly reduces size compared to lower levels.
+# Trade-off: slower compilation time, but acceptable since releases happen infrequently on version tags.
+opt-level = 3
+
+# lto = true: Enable Link-Time Optimization (Fat LTO variant)
+# LTO performs cross-module optimizations during linking, using whole-program analysis.
+# This can significantly reduce binary size (typically 10-30%) and improve performance through
+# better dead code elimination and inlining across crate boundaries.
+# Trade-off: substantially longer linking time, but worth it for a distributed binary that runs
+# repeatedly in many environments.
+lto = true
+
+# codegen-units = 1: Compile all code in a single codegen unit for maximum optimization
+# By default, Rust splits code into multiple parallel units for faster builds.
+# Setting this to 1 means everything compiles serially but allows cross-unit optimizations.
+# This produces the best possible final binary at the cost of slower compilation.
+# Acceptable here since release builds only happen on version tags, not in development workflows.
+codegen-units = 1

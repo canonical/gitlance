@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: Canonical Ltd.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  BINARY_PATH: target/release/gitlance
+  BINARY_CHECKSUM_PATH: target/release/gitlance.sha256
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+
+      # Note: Rust caching not needed for release workflow
+      # Releases are infrequent (monthly) and cache expires after 7 days
+
+      - name: Install Task
+        run: sudo snap install --classic task
+
+      - name: Run validation
+        timeout-minutes: 10
+        run: task validate
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Verify binary exists
+        run: |
+          if [ ! -f ${{ env.BINARY_PATH }} ]; then
+            echo "Error: Binary not found at ${{ env.BINARY_PATH }}"
+            exit 1
+          fi
+          echo "✓ Binary verified:"
+          ls -lh ${{ env.BINARY_PATH }}
+
+      - name: Generate SHA256 checksum
+        run: |
+          sha256sum ${{ env.BINARY_PATH }} > ${{ env.BINARY_CHECKSUM_PATH }}
+          cat ${{ env.BINARY_CHECKSUM_PATH }}
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CHECKSUM=$(cat ${{ env.BINARY_CHECKSUM_PATH }})
+          gh release create ${{ github.ref_name }} \
+            ${{ env.BINARY_PATH }} \
+            ${{ env.BINARY_CHECKSUM_PATH }} \
+            --title "Release ${{ github.ref_name }}" \
+            --generate-notes \
+            --notes "**SHA256 Checksum:**
+            \`\`\`
+            $CHECKSUM
+            \`\`\`"
