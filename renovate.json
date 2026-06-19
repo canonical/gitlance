@@ -1,0 +1,52 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":gitSignOff"
+  ],
+  "configMigration": true,
+  "semanticCommits": "enabled",
+  "commitBodyTable": true,
+  "dependencyDashboardAutoclose": true,
+  "labels": ["dependencies"],
+  "schedule": ["before 6am on Monday"],
+  "timezone": "UTC",
+  "prConcurrentLimit": 3,
+  "packageRules": [
+    {
+      "description": "Group all Rust minor and patch updates together",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Rust dependencies (non-major)",
+      "labels": ["dependencies", "dependencies-rust-non-major"],
+      "automerge": false
+    },
+    {
+      "description": "Separate major updates for careful review",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "Rust dependencies (major)",
+      "labels": ["dependencies", "dependencies-rust-major"],
+      "prPriority": 10
+    },
+    {
+      "description": "Group all GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "labels": ["dependencies", "dependencies-github-actions"],
+      "automerge": false
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["dependencies", "security"]
+  },
+  "cargo": {
+    "enabled": true,
+    "rangeStrategy": "bump"
+  }
+}

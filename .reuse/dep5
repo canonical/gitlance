@@ -1,5 +1,5 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 
-Files: Cargo.lock
+Files: Cargo.lock renovate.json
 Copyright: Canonical Ltd.
 License: Apache-2.0

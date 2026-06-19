@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Canonical Ltd.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Renovate config validation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  detect-renovate-config-changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      renovate_config: ${{ steps.filter.outputs.renovate_config }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            renovate_config:
+              - 'renovate.json'
+
+  validate-renovate-config:
+    needs: detect-renovate-config-changes
+    if: needs.detect-renovate-config-changes.outputs.renovate_config == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate Renovate configuration
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/renovate.json:/renovate.json:ro \
+            renovate/renovate:43 \
+            renovate-config-validator /renovate.json \
+            | tee renovate_validation.log
+      - name: Check Renovate validation log for problems
+        run: |
+          if grep -qE 'validationError|ERROR:|FATAL:|SyntaxError' renovate_validation.log; then
+            echo "Renovate validation problems found, check the log for details."
+            exit 1
+          else
+            echo "No Renovate validation problems found."
+          fi
