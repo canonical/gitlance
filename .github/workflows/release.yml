@@ -51,8 +51,9 @@ jobs:
 
       - name: Generate SHA256 checksum
         run: |
-          sha256sum ${{ env.BINARY_PATH }} > ${{ env.BINARY_CHECKSUM_PATH }}
-          cat ${{ env.BINARY_CHECKSUM_PATH }}
+          cd target/release
+          sha256sum gitlance > gitlance.sha256
+          cat gitlance.sha256
 
       - name: Create GitHub Release
         shell: bash
