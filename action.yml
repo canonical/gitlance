@@ -67,11 +67,6 @@ runs:
         chmod +x "${{ runner.temp }}/gitlance/gitlance"
         echo "gitlance_binary=${{ runner.temp }}/gitlance/gitlance" >> $GITHUB_ENV
 
-    - name: Checkout PR ref
-      uses: actions/checkout@v7
-      with:
-        fetch-depth: 0
-
     - name: Run commit checks
       id: run-check
       shell: bash
