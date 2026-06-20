@@ -50,6 +50,8 @@ runs:
         GITLANCE_BINARY_SHA256="${{ runner.temp }}/gitlance.sha256"
 
         # Try to download pre-built binary if action ref is specified
+        # Note: Prebuilt binaries are only available for immutable release tags (e.g., v1.2.3).
+        # Moving tags like @v1 will fall back to building from source.
         VERSION="${{ github.action_ref }}"
         if [ -n "$VERSION" ]; then
           DOWNLOAD_URL="https://github.com/agherzan/gitlance/releases/download/$VERSION/gitlance"

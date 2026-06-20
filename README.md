@@ -206,6 +206,8 @@ steps:
 
 The action automatically downloads the pre-built binary for the specified version. No additional setup is required.
 
+**Note:** Prebuilt binaries are only available for immutable release tags (e.g., `@v1.2.3`). Major tags like `@v1` will build from source on each run.
+
 ## Building Locally
 
 ### Using Task
