@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Canonical Ltd.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Commit Checks
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-commits:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # Required to access commit history
+
+      - name: Run commit checks
+        uses: ./
