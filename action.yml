@@ -82,12 +82,21 @@ runs:
         BASE_SHA="${PROVIDED_BASE_SHA:-$PR_BASE_SHA}"
         HEAD_SHA="${PROVIDED_HEAD_SHA:-$PR_HEAD_SHA}"
 
-        # Run the binary
-        if [ "$CHECK_TYPE" = "all" ]; then
-          "$GITLANCE_BINARY" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" --repo .
-        else
-          "$GITLANCE_BINARY" "$CHECK_TYPE" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" --repo .
+        # Build command with optional check type and SHA flags
+        CMD_ARGS=()
+        if [ "$CHECK_TYPE" != "all" ]; then
+          CMD_ARGS+=("$CHECK_TYPE")
         fi
+        if [ -n "$BASE_SHA" ]; then
+          CMD_ARGS+=("--base-sha" "$BASE_SHA")
+        fi
+        if [ -n "$HEAD_SHA" ]; then
+          CMD_ARGS+=("--head-sha" "$HEAD_SHA")
+        fi
+        CMD_ARGS+=("--repo" ".")
+
+        # Run the binary
+        "$GITLANCE_BINARY" "${CMD_ARGS[@]}"
 
         # If we get here, the check passed
         echo "passed=true" >> "$GITHUB_OUTPUT"
