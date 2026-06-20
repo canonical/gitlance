@@ -69,7 +69,7 @@ runs:
           echo "::notice::Building from source at ${{ github.action_path }}"
           (
             cd "${{ github.action_path }}"
-            cargo build --release --quiet
+            cargo build --release --locked --quiet
             cp target/release/gitlance "$GITLANCE_BINARY"
           )
         fi

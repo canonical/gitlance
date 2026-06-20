@@ -51,13 +51,13 @@ tasks:
     desc: "Build the project"
     deps: [setup]
     cmds:
-      - "{{ .CARGO }} build"
+      - "{{ .CARGO }} build --locked"
 
   build-release:
     desc: "Build optimized release binary"
     deps: [setup]
     cmds:
-      - "{{ .CARGO }} build --release"
+      - "{{ .CARGO }} build --release --locked"
       - echo "✓ Release binary built"
 
   # Testing
@@ -65,13 +65,13 @@ tasks:
     desc: "Run all tests"
     deps: [setup]
     cmds:
-      - "{{ .CARGO }} test"
+      - "{{ .CARGO }} test --locked"
 
   test-single:
     desc: "Run single test (pass TEST=test_name)"
     deps: [setup]
     cmds:
-      - "{{ .CARGO }} test {{ .TEST }} -- --nocapture"
+      - "{{ .CARGO }} test --locked {{ .TEST }} -- --nocapture"
     requires:
       vars: [TEST]
 
@@ -79,7 +79,7 @@ tasks:
     desc: "Run tests matching pattern (pass PATTERN=test_*)"
     deps: [setup]
     cmds:
-      - "{{ .CARGO }} test --test integration_tests -- --nocapture {{ .PATTERN }}"
+      - "{{ .CARGO }} test --locked --test integration_tests -- --nocapture {{ .PATTERN }}"
     requires:
       vars: [PATTERN]
 
@@ -88,8 +88,8 @@ tasks:
     deps: [setup]
     cmds:
       - cargo llvm-cov --version 2>/dev/null || cargo install cargo-llvm-cov@0.8.7 --quiet --locked
-      - cargo llvm-cov --verbose --tests --html --output-dir coverage
-      - cargo llvm-cov report --fail-under-lines 70
+      - cargo llvm-cov --locked --verbose --tests --html --output-dir coverage
+      - cargo llvm-cov --locked report --fail-under-lines 70
       - echo "✓ Coverage report generated in coverage/html/index.html"
 
   # Documentation
