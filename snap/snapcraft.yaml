@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Canonical Ltd.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: gitlance
+base: core24
+version: git
+summary: Vigilance for your Git commits
+description: |
+  A tool for validating Git commit messages.
+
+title: gitlance
+contact: https://github.com/canonical/gitlance/issues
+issues: https://github.com/canonical/gitlance/issues
+source-code: https://github.com/canonical/gitlance
+website: https://github.com/canonical/gitlance
+
+grade: stable
+confinement: strict
+license: Apache-2.0
+
+platforms:
+  amd64:
+
+apps:
+  gitlance:
+    command: bin/gitlance
+    plugs:
+      - home
+
+parts:
+  gitlance:
+    plugin: rust
+    source: .
+    rust-channel: stable
+    build-packages:
+      # Required by git2 crate's libgit2-sys dependency
+      - pkg-config
+      - libssl-dev
