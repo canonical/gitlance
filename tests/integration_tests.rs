@@ -279,16 +279,30 @@ mod tests {
 
         let base_sha = create_commit(&repo_path, "initial");
 
-        // Using the same SHA for base and head should result in no commits
+        // Using the same SHA for base and head should result in no commits and fail
+        let output = run(
+            None,
+            Some(&repo_path),
+            Some(&base_sha),
+            Some(&base_sha),
+            None,
+            false,
+        );
         assert!(
-            run_check(
-                None,
-                Some(&repo_path),
-                Some(&base_sha),
-                Some(&base_sha),
-                None
-            ),
-            "Expected success with empty commit range"
+            !output.status.success(),
+            "Expected failure with empty commit range"
+        );
+
+        // Emit an error annotation (not a notice) naming the range, so the
+        // misconfiguration is visible and diagnosable in CI.
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains(&format!(
+                "::error::No commits found in the range {}..{}",
+                base_sha, base_sha
+            )),
+            "Expected an error annotation naming the range, got: {}",
+            stdout
         );
     }
 
