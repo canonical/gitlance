@@ -6,9 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 # gitlance
 
-[![Validate](https://github.com/agherzan/gitlance/actions/workflows/validate.yml/badge.svg)](https://github.com/agherzan/gitlance/actions/workflows/validate.yml)
+[![Validate](https://github.com/canonical/gitlance/actions/workflows/validate.yml/badge.svg)](https://github.com/canonical/gitlance/actions/workflows/validate.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![REUSE](https://api.reuse.software/badge/github.com/agherzan/gitlance)](https://api.reuse.software/info/github.com/agherzan/gitlance)
+[![REUSE](https://api.reuse.software/badge/github.com/canonical/gitlance)](https://api.reuse.software/info/github.com/canonical/gitlance)
 
 A GitHub Action for validating Git commit messages and history. Checks for WIP/fixup commits, Signed-off-by trailers, and conventional commit format.
 
@@ -32,7 +32,7 @@ steps:
   - uses: actions/checkout@v4
     with:
       fetch-depth: 0  # Required to access commit history
-  - uses: agherzan/gitlance@v1
+  - uses: canonical/gitlance@v1
 ```
 
 This will run all checks by default in your PR context.
@@ -46,7 +46,7 @@ steps:
   - uses: actions/checkout@v4
     with:
       fetch-depth: 0
-  - uses: agherzan/gitlance@v1
+  - uses: canonical/gitlance@v1
     with:
       check: wip-fixup
 ```
@@ -60,7 +60,7 @@ steps:
   - uses: actions/checkout@v4
     with:
       fetch-depth: 0
-  - uses: agherzan/gitlance@v1
+  - uses: canonical/gitlance@v1
     with:
       base-sha: ${{ github.event.before }}
       head-sha: ${{ github.sha }}
@@ -78,7 +78,7 @@ steps:
     with:
       fetch-depth: 0
   - id: checks
-    uses: agherzan/gitlance@v1
+    uses: canonical/gitlance@v1
     continue-on-error: true  # Don't fail workflow immediately
 
   - name: Post comment on validation failure
@@ -160,7 +160,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: agherzan/gitlance@v1
+      - uses: canonical/gitlance@v1
 ```
 
 ### Check with strict conventional commits
@@ -170,7 +170,7 @@ steps:
   - uses: actions/checkout@v4
     with:
       fetch-depth: 0
-  - uses: agherzan/gitlance@v1
+  - uses: canonical/gitlance@v1
     with:
       check: conventional-commits
 ```
@@ -185,13 +185,13 @@ steps:
     with:
       fetch-depth: 0
 
-  - uses: agherzan/gitlance@v1
+  - uses: canonical/gitlance@v1
     id: wip-check
     continue-on-error: true
     with:
       check: wip-fixup
 
-  - uses: agherzan/gitlance@v1
+  - uses: canonical/gitlance@v1
     id: signoff-check
     continue-on-error: true
     with:

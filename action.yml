@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 name: 'gitlance'
-description: 'Vigilance for your Git commit'
+description: 'Vigilance for your Git commits'
 
 inputs:
   check:
@@ -54,7 +54,7 @@ runs:
         # Moving tags like @v1 will fall back to building from source.
         VERSION="${{ github.action_ref }}"
         if [ -n "$VERSION" ]; then
-          DOWNLOAD_URL="https://github.com/agherzan/gitlance/releases/download/$VERSION/gitlance"
+          DOWNLOAD_URL="https://github.com/canonical/gitlance/releases/download/$VERSION/gitlance"
           echo "::notice::Attempting to download release $VERSION"
           if curl -fsSL "$DOWNLOAD_URL" -o "$GITLANCE_BINARY" && \
              curl -fsSL "${DOWNLOAD_URL}.sha256" -o "$GITLANCE_BINARY_SHA256" && \

@@ -8,7 +8,7 @@ use std::process::exit;
 
 #[derive(Parser)]
 #[command(name = "gitlance")]
-#[command(about = "Vigilance for your Git commit")]
+#[command(about = "Vigilance for your Git commits")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
