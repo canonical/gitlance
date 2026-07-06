@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use clap::{Parser, Subcommand};
-use gitlance::{checks, git, output, run_check};
+use gitlance::{abbreviate_sha, checks, git, output, run_check};
 use std::process::exit;
 
 #[derive(Parser)]
@@ -43,6 +43,20 @@ enum Commands {
 
     /// Run all checks (default if no command given)
     All,
+}
+
+/// Displays the list of commits being tested
+fn display_commits(commits: &[git::Commit]) {
+    let count = commits.len();
+    let plural = if count == 1 { "commit" } else { "commits" };
+    println!("Testing {} {}:", count, plural);
+
+    for commit in commits {
+        let sha_abbrev = abbreviate_sha(&commit.sha);
+        let first_line = commit.message.lines().next().unwrap_or("");
+        println!("  {} {}", sha_abbrev, first_line);
+    }
+    println!();
 }
 
 fn main() {
@@ -101,6 +115,9 @@ fn main() {
         output::notice("No commits found in the specified range");
         exit(0);
     }
+
+    // Display the commits being tested
+    display_commits(&commits);
 
     // Run the appropriate check(s)
     let overall_passed = match command {

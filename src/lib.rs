@@ -17,7 +17,7 @@ pub use git::{get_commits_in_range, open_repo, resolve_ref};
 const SHA_ABBREV_LEN: usize = 8;
 
 /// Abbreviates a SHA to the first 8 characters (or less if shorter).
-fn abbreviate_sha(sha: &str) -> &str {
+pub fn abbreviate_sha(sha: &str) -> &str {
     &sha[..SHA_ABBREV_LEN.min(sha.len())]
 }
 
