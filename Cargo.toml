@@ -8,8 +8,8 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Andrei Gherzan <andrei.gherzan@canonical.com>"]
 license = "Apache-2.0"
-description = "Vigilance for your Git commit"
-repository = "https://github.com/agherzan/gitlance"
+description = "Vigilance for your Git commits"
+repository = "https://github.com/canonical/gitlance"
 publish = false
 
 [lib]
