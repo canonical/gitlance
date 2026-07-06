@@ -25,10 +25,14 @@ fn parse_oid(sha: &str) -> Result<Oid, CheckError> {
 
 /// Gets all commits in the range [base_sha, head_sha]
 /// Returns commits from base (exclusive) to head (inclusive)
+///
+/// If `skip_merge_commits` is true, merge commits (commits with more than one parent)
+/// are excluded from the results.
 pub fn get_commits_in_range(
     repo: &Repository,
     base_sha: &str,
     head_sha: &str,
+    skip_merge_commits: bool,
 ) -> Result<Vec<Commit>, CheckError> {
     let base_oid = parse_oid(base_sha)?;
     let head_oid = parse_oid(head_sha)?;
@@ -55,6 +59,10 @@ pub fn get_commits_in_range(
         let commit = repo
             .find_commit(oid)
             .map_err(|e| CheckError::Git(format!("Failed to find commit {}: {}", oid, e)))?;
+
+        if skip_merge_commits && commit.parent_count() > 1 {
+            continue;
+        }
 
         let message = commit
             .message()
@@ -130,13 +138,79 @@ mod tests {
         let _sha1 = create_commit(&repo_path, "second commit");
         let sha2 = create_commit(&repo_path, "third commit");
 
-        let commits = get_commits_in_range(&repo, &base_sha, &sha2);
+        let commits = get_commits_in_range(&repo, &base_sha, &sha2, false);
         assert!(commits.is_ok());
 
         let commits = commits.expect("Failed to get commits in range");
         assert_eq!(commits.len(), 2);
         assert_eq!(commits[0].message.trim(), "third commit");
         assert_eq!(commits[1].message.trim(), "second commit");
+    }
+
+    #[test]
+    fn test_get_commits_in_range_skip_merge_commits() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+
+        let initial_sha = create_commit(&repo_path, "initial");
+        let commit1_sha = create_commit(&repo_path, "commit 1");
+        let commit2_sha = create_commit(&repo_path, "commit 2");
+
+        let commit1_oid = Oid::from_str(&commit1_sha).expect("Failed to parse commit1 SHA");
+        let commit2_oid = Oid::from_str(&commit2_sha).expect("Failed to parse commit2 SHA");
+
+        let commit1 = repo
+            .find_commit(commit1_oid)
+            .expect("Failed to find commit1");
+        let commit2 = repo
+            .find_commit(commit2_oid)
+            .expect("Failed to find commit2");
+
+        let tree = commit2.tree().expect("Failed to get tree");
+        let sig = repo.signature().expect("Failed to get signature");
+
+        let merge_oid = repo
+            .commit(
+                Some("HEAD"),
+                &sig,
+                &sig,
+                "Merge commit",
+                &tree,
+                &[&commit2, &commit1],
+            )
+            .expect("Failed to create merge commit");
+
+        let merge_sha = merge_oid.to_string();
+
+        let commits_with_merge = get_commits_in_range(&repo, &initial_sha, &merge_sha, false)
+            .expect("Failed to get commits with merge");
+
+        assert_eq!(commits_with_merge.len(), 3, "Should include merge commit");
+        assert!(
+            commits_with_merge[0].message.contains("Merge commit"),
+            "First commit should be merge commit"
+        );
+
+        let commits_without_merge = get_commits_in_range(&repo, &initial_sha, &merge_sha, true)
+            .expect("Failed to get commits without merge");
+
+        assert_eq!(
+            commits_without_merge.len(),
+            2,
+            "Should exclude merge commit"
+        );
+        assert!(
+            !commits_without_merge
+                .iter()
+                .any(|c| c.message.contains("Merge commit")),
+            "Should not contain merge commit"
+        );
     }
 
     #[test]
@@ -152,7 +226,7 @@ mod tests {
 
         let _ = create_commit(&repo_path, "initial");
 
-        let commits = get_commits_in_range(&repo, "invalid_sha", "abc123");
+        let commits = get_commits_in_range(&repo, "invalid_sha", "abc123", false);
         assert!(commits.is_err());
         if let Err(err) = commits {
             assert!(err.to_string().contains("Invalid SHA"));
@@ -172,7 +246,7 @@ mod tests {
 
         let base_sha = create_commit(&repo_path, "initial");
 
-        let commits = get_commits_in_range(&repo, &base_sha, "invalid_sha");
+        let commits = get_commits_in_range(&repo, &base_sha, "invalid_sha", false);
         assert!(commits.is_err());
         if let Err(err) = commits {
             assert!(err.to_string().contains("Invalid SHA"));

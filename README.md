@@ -142,6 +142,21 @@ Examples:
 ### all
 Runs all available checks. This is the default if no check is specified.
 
+## Merge Commit Handling
+
+By default, gitlance checks all commits including merge commits. To skip merge commits (e.g., auto-generated "Merge branch 'feature'" messages that don't follow conventional format):
+
+```yaml
+- uses: canonical/gitlance@v1
+  with:
+    skip-merge-commits: true
+```
+
+Or via CLI:
+```bash
+gitlance all --base-sha abc123 --head-sha def456 --skip-merge-commits
+```
+
 ## Example Workflows
 
 ### Check all commits on PR

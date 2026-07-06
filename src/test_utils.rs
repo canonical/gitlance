@@ -103,7 +103,7 @@ where
     F: FnOnce(&[crate::git::Commit]) -> Vec<(String, String)>,
 {
     let repo = crate::git::open_repo(repo_path).expect("Failed to open repo");
-    let commits =
-        crate::git::get_commits_in_range(&repo, base_sha, head_sha).expect("Failed to get commits");
+    let commits = crate::git::get_commits_in_range(&repo, base_sha, head_sha, false)
+        .expect("Failed to get commits");
     check_fn(&commits)
 }

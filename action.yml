@@ -18,6 +18,10 @@ inputs:
     description: 'Head commit SHA (auto-detected from PR if available)'
     required: false
     default: ''
+  skip-merge-commits:
+    description: 'Skip merge commits in validation (default: false, all commits are checked)'
+    required: false
+    default: 'false'
 
 outputs:
   passed:
@@ -37,6 +41,7 @@ runs:
         CHECK_TYPE: ${{ inputs.check }}
         PROVIDED_BASE_SHA: ${{ inputs.base-sha }}
         PROVIDED_HEAD_SHA: ${{ inputs.head-sha }}
+        SKIP_MERGE_COMMITS: ${{ inputs.skip-merge-commits }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
@@ -94,6 +99,11 @@ runs:
           CMD_ARGS+=("--head-sha" "$HEAD_SHA")
         fi
         CMD_ARGS+=("--repo" ".")
+        
+        # Add skip-merge-commits flag if requested
+        if [ "$SKIP_MERGE_COMMITS" = "true" ]; then
+          CMD_ARGS+=("--skip-merge-commits")
+        fi
 
         # Run the binary
         "$GITLANCE_BINARY" "${CMD_ARGS[@]}"

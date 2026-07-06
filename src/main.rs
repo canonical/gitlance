@@ -24,6 +24,10 @@ struct Cli {
     /// Git repository path
     #[arg(long, global = true, default_value = ".")]
     repo: String,
+
+    /// Skip merge commits in validation (default: false, all commits are checked)
+    #[arg(long, global = true)]
+    skip_merge_commits: bool,
 }
 
 #[derive(Subcommand)]
@@ -81,13 +85,14 @@ fn main() {
     };
 
     // Get commits in range
-    let commits = match git::get_commits_in_range(&repo, &base_sha, &head_sha) {
-        Ok(commits) => commits,
-        Err(e) => {
-            output::error(&format!("Failed to get commits: {}", e));
-            exit(1);
-        }
-    };
+    let commits =
+        match git::get_commits_in_range(&repo, &base_sha, &head_sha, cli.skip_merge_commits) {
+            Ok(commits) => commits,
+            Err(e) => {
+                output::error(&format!("Failed to get commits: {}", e));
+                exit(1);
+            }
+        };
 
     if commits.is_empty() {
         output::notice("No commits found in the specified range");
