@@ -13,13 +13,13 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Base commit SHA (auto-detect from environment if available)
+    /// Base git reference (auto-detect from environment if available)
     #[arg(long, global = true)]
-    base_sha: Option<String>,
+    base: Option<String>,
 
-    /// Head commit SHA (auto-detect from environment if available)
+    /// Head git reference (auto-detect from environment if available)
     #[arg(long, global = true)]
-    head_sha: Option<String>,
+    head: Option<String>,
 
     /// Git repository path
     #[arg(long, global = true, default_value = ".")]
@@ -51,20 +51,24 @@ fn main() {
     // Determine which checks to run
     let command = cli.command.unwrap_or(Commands::All);
 
-    // Get SHAs, with environment variable fallback
-    let base_sha = cli.base_sha.or_else(|| std::env::var("BASE_SHA").ok());
-    let head_sha = cli.head_sha.or_else(|| std::env::var("HEAD_SHA").ok());
+    // Get refs, with environment variable fallback
+    let base = cli.base.or_else(|| std::env::var("BASE_REF").ok());
+    let head = cli.head.or_else(|| std::env::var("HEAD_REF").ok());
 
-    // Validate both SHAs before proceeding
+    // Validate both refs before proceeding
     let mut has_errors = false;
 
-    if base_sha.is_none() {
-        output::error("Missing base SHA. Provide --base-sha or set BASE_SHA environment variable");
+    if base.is_none() {
+        output::error(
+            "Missing base reference. Provide --base or set BASE_REF environment variable",
+        );
         has_errors = true;
     }
 
-    if head_sha.is_none() {
-        output::error("Missing head SHA. Provide --head-sha or set HEAD_SHA environment variable");
+    if head.is_none() {
+        output::error(
+            "Missing head reference. Provide --head or set HEAD_REF environment variable",
+        );
         has_errors = true;
     }
 
@@ -72,8 +76,8 @@ fn main() {
         exit(1);
     }
 
-    let base_sha = base_sha.expect("base_sha should be validated above");
-    let head_sha = head_sha.expect("head_sha should be validated above");
+    let base = base.expect("base should be validated above");
+    let head = head.expect("head should be validated above");
 
     // Open repository
     let repo = match git::open_repo(&cli.repo) {
@@ -85,14 +89,13 @@ fn main() {
     };
 
     // Get commits in range
-    let commits =
-        match git::get_commits_in_range(&repo, &base_sha, &head_sha, cli.skip_merge_commits) {
-            Ok(commits) => commits,
-            Err(e) => {
-                output::error(&format!("Failed to get commits: {}", e));
-                exit(1);
-            }
-        };
+    let commits = match git::get_commits_in_range(&repo, &base, &head, cli.skip_merge_commits) {
+        Ok(commits) => commits,
+        Err(e) => {
+            output::error(&format!("Failed to get commits: {}", e));
+            exit(1);
+        }
+    };
 
     if commits.is_empty() {
         output::notice("No commits found in the specified range");

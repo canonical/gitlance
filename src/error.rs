@@ -11,8 +11,8 @@ pub enum CheckError {
     Repository(String),
     /// Git operation errors
     Git(String),
-    /// Missing or invalid SHA
-    InvalidSha(String),
+    /// Missing or invalid git reference
+    InvalidRef(String),
 }
 
 impl fmt::Display for CheckError {
@@ -20,7 +20,7 @@ impl fmt::Display for CheckError {
         match self {
             CheckError::Repository(msg) => write!(f, "Repository error: {}", msg),
             CheckError::Git(msg) => write!(f, "Git error: {}", msg),
-            CheckError::InvalidSha(msg) => write!(f, "Invalid SHA: {}", msg),
+            CheckError::InvalidRef(msg) => write!(f, "Invalid reference: {}", msg),
         }
     }
 }
@@ -44,9 +44,9 @@ mod tests {
     }
 
     #[test]
-    fn test_check_error_invalid_sha_display() {
-        let err = CheckError::InvalidSha("bad hash".to_string());
-        assert_eq!(err.to_string(), "Invalid SHA: bad hash");
+    fn test_check_error_invalid_ref_display() {
+        let err = CheckError::InvalidRef("bad ref".to_string());
+        assert_eq!(err.to_string(), "Invalid reference: bad ref");
     }
 
     #[test]

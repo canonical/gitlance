@@ -10,12 +10,12 @@ inputs:
     description: 'Check to run: wip-fixup, signed-off-by, conventional-commits, all (default: all)'
     required: false
     default: 'all'
-  base-sha:
-    description: 'Base commit SHA (auto-detected from PR if available)'
+  base:
+    description: 'Base git reference - commit SHA, branch, tag, or HEAD~n (auto-detected from PR if available)'
     required: false
     default: ''
-  head-sha:
-    description: 'Head commit SHA (auto-detected from PR if available)'
+  head:
+    description: 'Head git reference - commit SHA, branch, tag, or HEAD~n (auto-detected from PR if available)'
     required: false
     default: ''
   skip-merge-commits:
@@ -39,8 +39,8 @@ runs:
       shell: bash
       env:
         CHECK_TYPE: ${{ inputs.check }}
-        PROVIDED_BASE_SHA: ${{ inputs.base-sha }}
-        PROVIDED_HEAD_SHA: ${{ inputs.head-sha }}
+        PROVIDED_BASE_REF: ${{ inputs.base }}
+        PROVIDED_HEAD_REF: ${{ inputs.head }}
         SKIP_MERGE_COMMITS: ${{ inputs.skip-merge-commits }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -83,20 +83,20 @@ runs:
 
         chmod +x "$GITLANCE_BINARY"
 
-        # Resolve SHAs with priority: provided > PR context > empty
-        BASE_SHA="${PROVIDED_BASE_SHA:-$PR_BASE_SHA}"
-        HEAD_SHA="${PROVIDED_HEAD_SHA:-$PR_HEAD_SHA}"
+        # Resolve refs with priority: provided > PR context > empty
+        BASE_REF="${PROVIDED_BASE_REF:-$PR_BASE_SHA}"
+        HEAD_REF="${PROVIDED_HEAD_REF:-$PR_HEAD_SHA}"
 
-        # Build command with optional check type and SHA flags
+        # Build command with optional check type and ref flags
         CMD_ARGS=()
         if [ "$CHECK_TYPE" != "all" ]; then
           CMD_ARGS+=("$CHECK_TYPE")
         fi
-        if [ -n "$BASE_SHA" ]; then
-          CMD_ARGS+=("--base-sha" "$BASE_SHA")
+        if [ -n "$BASE_REF" ]; then
+          CMD_ARGS+=("--base" "$BASE_REF")
         fi
-        if [ -n "$HEAD_SHA" ]; then
-          CMD_ARGS+=("--head-sha" "$HEAD_SHA")
+        if [ -n "$HEAD_REF" ]; then
+          CMD_ARGS+=("--head" "$HEAD_REF")
         fi
         CMD_ARGS+=("--repo" ".")
         

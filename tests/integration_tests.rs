@@ -12,8 +12,8 @@ mod tests {
     fn run_check(
         check: Option<&str>,
         repo_path: &str,
-        base_sha: Option<&str>,
-        head_sha: Option<&str>,
+        base: Option<&str>,
+        head: Option<&str>,
     ) -> bool {
         use assert_cmd::Command;
 
@@ -25,11 +25,11 @@ mod tests {
 
         cmd.args(["--repo", repo_path]);
 
-        if let Some(sha) = base_sha {
-            cmd.args(["--base-sha", sha]);
+        if let Some(r) = base {
+            cmd.args(["--base", r]);
         }
-        if let Some(sha) = head_sha {
-            cmd.args(["--head-sha", sha]);
+        if let Some(r) = head {
+            cmd.args(["--head", r]);
         }
 
         cmd.ok().is_ok()
@@ -80,7 +80,7 @@ mod tests {
     // ===== Error Handling Tests =====
 
     #[test]
-    fn test_missing_base_sha() {
+    fn test_missing_base_ref() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let repo_path = create_test_repo(
             temp_dir
@@ -92,12 +92,12 @@ mod tests {
 
         assert!(
             !run_check(None, &repo_path, None, Some("abc123")),
-            "Expected check to fail without base SHA"
+            "Expected check to fail without base ref"
         );
     }
 
     #[test]
-    fn test_missing_head_sha() {
+    fn test_missing_head_ref() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let repo_path = create_test_repo(
             temp_dir
@@ -109,12 +109,12 @@ mod tests {
 
         assert!(
             !run_check(None, &repo_path, Some("abc123"), None),
-            "Expected check to fail without head SHA"
+            "Expected check to fail without head ref"
         );
     }
 
     #[test]
-    fn test_invalid_sha() {
+    fn test_invalid_ref() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let repo_path = create_test_repo(
             temp_dir
@@ -122,11 +122,11 @@ mod tests {
                 .to_str()
                 .expect("Failed to convert temp dir path to string"),
         );
-        let base_sha = create_commit(&repo_path, "initial");
+        let base = create_commit(&repo_path, "initial");
 
         assert!(
-            !run_check(None, &repo_path, Some(&base_sha), Some("invalid")),
-            "Expected check to fail with invalid SHA"
+            !run_check(None, &repo_path, Some(&base), Some("invalid")),
+            "Expected check to fail with invalid ref"
         );
     }
 
@@ -252,6 +252,48 @@ mod tests {
                 Some("def456")
             ),
             "Expected check to fail with invalid repository path"
+        );
+    }
+
+    #[test]
+    fn test_head_reference_as_head() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+
+        let base = create_commit(&repo_path, "initial");
+        let message = "feat: add feature\n\nSigned-off-by: Test User <test@example.com>";
+        let _sha1 = create_commit(&repo_path, message);
+
+        assert!(
+            run_check(Some("all"), &repo_path, Some(&base), Some("HEAD")),
+            "Expected check to pass with HEAD reference"
+        );
+    }
+
+    #[test]
+    fn test_head_tilde_reference() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+
+        let _base = create_commit(&repo_path, "initial");
+        let message1 = "feat: feature 1\n\nSigned-off-by: Test User <test@example.com>";
+        let _sha1 = create_commit(&repo_path, message1);
+        let message2 = "feat: feature 2\n\nSigned-off-by: Test User <test@example.com>";
+        let _sha2 = create_commit(&repo_path, message2);
+
+        assert!(
+            run_check(Some("all"), &repo_path, Some("HEAD~2"), Some("HEAD")),
+            "Expected check to pass with HEAD~2 and HEAD references"
         );
     }
 }
