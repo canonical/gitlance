@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Canonical Ltd.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+set -e
+
+# Check that gitlance is available
+if ! command -v gitlance >/dev/null 2>&1; then
+    echo "Error: gitlance is not installed or not in PATH"
+    echo "To bypass: git push --no-verify"
+    exit 1
+fi
+
+# Parameters passed by git
+remote="$1"
+# shellcheck disable=SC2034
+url="$2"
+
+# Read push information from stdin
+# remote_ref is unused but required for parsing
+# shellcheck disable=SC2034
+while read -r local_ref local_oid remote_ref remote_oid
+do
+    # Skip non-branch refs (e.g., tags)
+    case "$local_ref" in
+        refs/heads/*) ;;
+        *) continue ;;
+    esac
+
+    # Skip deleted branches
+    if [ "$local_oid" = "0000000000000000000000000000000000000000" ]; then
+        continue
+    fi
+
+    # Determine base commit
+    if [ "$remote_oid" = "0000000000000000000000000000000000000000" ]; then
+        # New branch - try to find common ancestor with remote HEAD
+        base=""
+        if remote_head=$(git ls-remote "$remote" HEAD 2>/dev/null | awk '{print $1}') && [ -n "$remote_head" ]; then
+            base=$(git merge-base "$remote_head" "$local_oid" 2>/dev/null) || true
+        fi
+        # Fall back to root commit if no common ancestor found
+        if [ -z "$base" ]; then
+            base=$(git rev-list --max-parents=0 "$local_oid" | head -1)
+        fi
+    else
+        # Existing branch - find common ancestor to only check divergent commits
+        if ! base=$(git merge-base "$remote_oid" "$local_oid"); then
+            echo "Error: Failed to find merge-base between remote and local commits"
+            echo "To bypass: git push --no-verify"
+            exit 1
+        fi
+    fi
+
+    # Run gitlance
+    echo "Checking git commit logs with gitlance:"
+    echo
+    if ! gitlance --base "$base" --head "$local_oid"; then
+        echo ""
+        echo "Push rejected: Commit validation failed"
+        echo "To fix: git commit --amend, or git rebase -i $base"
+        echo "To bypass: git push --no-verify"
+        exit 1
+    fi
+done
+
+exit 0
