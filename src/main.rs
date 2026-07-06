@@ -157,8 +157,8 @@ fn main() {
 
         match git::get_commits_in_range(&repo, &base, &head, cli.skip_merge_commits) {
             Ok(commits) if commits.is_empty() => {
-                output::notice("No commits found in the specified range");
-                exit(0);
+                output::error(&format!("No commits found in the range {}..{}", base, head));
+                exit(1);
             }
             Ok(commits) => commits,
             Err(e) => {
