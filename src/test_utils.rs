@@ -95,15 +95,15 @@ pub fn setup_repo_with_commits(messages: &[&str]) -> (tempfile::TempDir, String,
 #[cfg(test)]
 pub fn check_commits_in_range<F>(
     repo_path: &str,
-    base_sha: &str,
-    head_sha: &str,
+    base: &str,
+    head: &str,
     check_fn: F,
 ) -> Vec<(String, String)>
 where
     F: FnOnce(&[crate::git::Commit]) -> Vec<(String, String)>,
 {
     let repo = crate::git::open_repo(repo_path).expect("Failed to open repo");
-    let commits = crate::git::get_commits_in_range(&repo, base_sha, head_sha, false)
-        .expect("Failed to get commits");
+    let commits =
+        crate::git::get_commits_in_range(&repo, base, head, false).expect("Failed to get commits");
     check_fn(&commits)
 }

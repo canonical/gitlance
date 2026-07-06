@@ -19,7 +19,7 @@ A GitHub Action for validating Git commit messages and history. Checks for WIP/f
 - **Clear feedback** - GitHub Actions annotations for failed checks
 - **Automatic failure** - Fails the workflow step when checks don't pass
 - **Default all-checks mode** - Runs all validations in a single invocation
-- **Auto-detection** - Automatically detects base/head SHAs from PR context
+- **Auto-detection** - Automatically detects base/head refs from PR context
 
 ## Usage
 
@@ -51,9 +51,9 @@ steps:
       check: wip-fixup
 ```
 
-### Manual SHA Specification
+### Manual Reference Specification
 
-For non-PR workflows (e.g., push events), provide SHAs explicitly:
+For non-PR workflows (e.g., push events), provide git references explicitly:
 
 ```yaml
 steps:
@@ -62,11 +62,18 @@ steps:
       fetch-depth: 0
   - uses: canonical/gitlance@v1
     with:
-      base-sha: ${{ github.event.before }}
-      head-sha: ${{ github.sha }}
+      base: ${{ github.event.before }}
+      head: ${{ github.sha }}
 ```
 
-Note: In PR context, SHAs are auto-detected and this is not needed.
+Git references can be:
+- **Full SHAs**: `abc123def456...` (40 characters)
+- **Short SHAs**: `abc123` (any unambiguous abbreviation accepted by Git)
+- **Symbolic refs**: `HEAD`, `HEAD~4`, `HEAD^`
+- **Branch names**: `main`, `origin/main`
+- **Tags**: `v1.0.0`
+
+Note: In PR context, refs are auto-detected and this is not needed.
 
 ### Using the Output
 
@@ -154,7 +161,7 @@ By default, gitlance checks all commits including merge commits. To skip merge c
 
 Or via CLI:
 ```bash
-gitlance all --base-sha abc123 --head-sha def456 --skip-merge-commits
+gitlance all --base abc123 --head def456 --skip-merge-commits
 ```
 
 ## Example Workflows
@@ -252,8 +259,8 @@ cargo test --verbose
 
 # Run specific check on your repo
 ./target/release/gitlance wip-fixup \
-  --base-sha <base_sha> \
-  --head-sha <head_sha> \
+  --base <base_ref> \
+  --head <head_ref> \
   --repo .
 ```
 
