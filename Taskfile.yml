@@ -19,6 +19,16 @@ tasks:
     cmds:
       - task -l
 
+  install-githooks:
+    desc: "Install git hooks for commit validation"
+    vars:
+      HOOKS_DIR:
+        sh: git rev-parse --git-path hooks
+    cmds:
+      - cp githooks/pre-push "{{.HOOKS_DIR}}/"
+      - chmod +x "{{.HOOKS_DIR}}/pre-push"
+      - echo "✓ Git hooks installed to {{.HOOKS_DIR}}"
+
   setup:
     desc: "Setup Rust toolchain and development environment"
     cmds:
