@@ -224,6 +224,27 @@ steps:
     run: exit 1
 ```
 
+## CLI Usage
+
+gitlance can also be run directly as a command-line tool, independent of GitHub
+Actions.
+
+### Validating a Single Commit Message
+
+Instead of a commit range, gitlance can validate a single commit message read
+from a file, using `--message-file`. This makes it convenient to use in a local
+`commit-msg` git hook, where git passes the path to the prepared message:
+
+```bash
+gitlance --message-file .git/COMMIT_EDITMSG
+```
+
+A specific check can also be selected:
+
+```bash
+gitlance conventional-commits --message-file .git/COMMIT_EDITMSG
+```
+
 ## Installation
 
 ### GitHub Action

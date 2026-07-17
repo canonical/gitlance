@@ -12,6 +12,34 @@ pub struct Commit {
     pub message: String,
 }
 
+impl Commit {
+    /// Creates a Commit from a raw commit message (no SHA available).
+    ///
+    /// Comment lines are stripped, matching how git treats a commit message.
+    pub fn from_message(message: String) -> Self {
+        Self {
+            sha: "-".to_string(),
+            message: strip_comments(&message),
+        }
+    }
+}
+
+/// The git "scissors" line. Everything from this line onward is discarded by
+/// git when interpreting a commit message (e.g. with `commit --verbose`).
+const SCISSORS: &str = "# ------------------------ >8 ------------------------";
+
+/// Strips content the way git interprets a commit message: everything from the
+/// scissors line onward is dropped, along with any comment lines (starting with
+/// `#`, ignoring leading whitespace).
+fn strip_comments(message: &str) -> String {
+    message
+        .lines()
+        .take_while(|line| line.trim_start() != SCISSORS)
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Opens a git repository at the specified path
 pub fn open_repo(repo_path: &str) -> Result<Repository, CheckError> {
     Repository::open(repo_path)
@@ -98,6 +126,43 @@ mod tests {
     use super::*;
     use crate::test_utils::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn test_strip_comments_hash_not_at_line_start_is_kept() {
+        assert_eq!(strip_comments("fix: issue #42"), "fix: issue #42");
+    }
+
+    #[test]
+    fn test_strip_comments_indented_hash_is_comment() {
+        // Git treats leading-whitespace `#` lines as comments too.
+        assert_eq!(strip_comments("feat: x\n   # indented"), "feat: x");
+    }
+
+    #[test]
+    fn test_strip_comments_all_comments_yields_empty() {
+        assert_eq!(strip_comments("# only\n# comments"), "");
+    }
+
+    #[test]
+    fn test_strip_comments_drops_content_after_scissors() {
+        let raw = "feat: subject\n\nBody\n# ------------------------ >8 ------------------------\ndiff --git a/x b/x\nWIP leftover";
+        assert_eq!(strip_comments(raw), "feat: subject\n\nBody");
+    }
+
+    #[test]
+    fn test_strip_comments_indented_scissors_is_honored() {
+        let raw =
+            "feat: subject\n   # ------------------------ >8 ------------------------\nignored";
+        assert_eq!(strip_comments(raw), "feat: subject");
+    }
+
+    #[test]
+    fn test_from_message_strips_comment_lines() {
+        let raw = "# Please enter the commit message\nfeat: subject\n\n# a comment\nBody\n";
+        let commit = Commit::from_message(raw.to_string());
+        assert_eq!(commit.sha, "-");
+        assert_eq!(commit.message, "feat: subject\n\nBody");
+    }
 
     #[test]
     fn test_open_repo_success() {
