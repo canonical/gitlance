@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Canonical Ltd.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+set -e
+
+# Check that gitlance is available
+if ! command -v gitlance >/dev/null 2>&1; then
+    echo "Error: gitlance is not installed or not in PATH"
+    echo "To bypass: git commit --no-verify"
+    exit 1
+fi
+
+message_file="$1"
+
+if ! gitlance --message-file "$message_file"; then
+    echo
+    echo "Commit rejected: Message validation failed"
+    echo "To bypass: git commit --no-verify"
+    exit 1
+fi
+
+exit 0
