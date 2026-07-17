@@ -27,6 +27,8 @@ tasks:
     cmds:
       - cp githooks/pre-push "{{.HOOKS_DIR}}/"
       - chmod +x "{{.HOOKS_DIR}}/pre-push"
+      - cp githooks/commit-msg "{{.HOOKS_DIR}}/"
+      - chmod +x "{{.HOOKS_DIR}}/commit-msg"
       - echo "✓ Git hooks installed to {{.HOOKS_DIR}}"
 
   setup:
