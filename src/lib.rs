@@ -18,7 +18,7 @@ const SHA_ABBREV_LEN: usize = 8;
 
 /// Abbreviates a SHA to the first 8 characters (or less if shorter).
 pub fn abbreviate_sha(sha: &str) -> &str {
-    &sha[..SHA_ABBREV_LEN.min(sha.len())]
+    sha.get(..SHA_ABBREV_LEN).unwrap_or(sha)
 }
 
 /// Runs a check and reports results.
