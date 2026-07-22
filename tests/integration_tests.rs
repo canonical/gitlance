@@ -7,15 +7,16 @@ mod tests {
     use gitlance::test_utils::*;
     use tempfile::TempDir;
 
-    /// Runs the binary with specific check and arguments (for integration testing).
-    /// Arguments can be omitted (None) to test error cases.
-    fn run_check(
+    /// Builds and runs the binary with the given arguments, returning the raw
+    /// process output. Any argument can be omitted (None) to test error cases.
+    fn run(
         check: Option<&str>,
         repo_path: Option<&str>,
         base: Option<&str>,
         head: Option<&str>,
         message_file: Option<&str>,
-    ) -> bool {
+        not_on_remotes: bool,
+    ) -> std::process::Output {
         use assert_cmd::Command;
 
         let mut cmd = Command::cargo_bin("gitlance").expect("Failed to find binary");
@@ -37,8 +38,25 @@ mod tests {
         if let Some(f) = message_file {
             cmd.args(["--message-file", f]);
         }
+        if not_on_remotes {
+            cmd.arg("--not-on-remotes");
+        }
 
-        cmd.ok().is_ok()
+        cmd.output().expect("Failed to run binary")
+    }
+
+    /// Runs the binary and reports whether it exited successfully.
+    /// Arguments can be omitted (None) to test error cases.
+    fn run_check(
+        check: Option<&str>,
+        repo_path: Option<&str>,
+        base: Option<&str>,
+        head: Option<&str>,
+        message_file: Option<&str>,
+    ) -> bool {
+        run(check, repo_path, base, head, message_file, false)
+            .status
+            .success()
     }
 
     // ===== All Checks Tests =====
@@ -339,6 +357,70 @@ mod tests {
                 None
             ),
             "Expected check to pass with HEAD~2 and HEAD references"
+        );
+    }
+
+    // ===== Not-on-remotes Tests =====
+
+    #[test]
+    fn test_not_on_remotes_checks_only_unpublished_commits() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+
+        let published = create_commit(&repo_path, "chore: initial");
+        let message = "feat: add feature\n\nSigned-off-by: Test User <test@example.com>";
+        let _new = create_commit(&repo_path, message);
+
+        // Mark the first commit as already present on a remote.
+        run_cmd(
+            &repo_path,
+            "git",
+            &["update-ref", "refs/remotes/origin/main", &published],
+        );
+
+        let output = run(None, Some(&repo_path), None, Some("HEAD"), None, true);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(output.status.success(), "Expected checks to pass");
+        assert!(
+            stdout.contains("Testing 1 commit"),
+            "Expected only the unpublished commit to be checked, got: {}",
+            stdout
+        );
+    }
+
+    #[test]
+    fn test_not_on_remotes_passes_when_nothing_new() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+
+        let head = create_commit(&repo_path, "chore: initial");
+
+        // Every commit is already on a remote.
+        run_cmd(
+            &repo_path,
+            "git",
+            &["update-ref", "refs/remotes/origin/main", &head],
+        );
+
+        let output = run(None, Some(&repo_path), None, Some("HEAD"), None, true);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(output.status.success(), "Expected a clean pass");
+        assert!(
+            stdout.contains("No new commits to check"),
+            "Expected clean-pass message, got: {}",
+            stdout
         );
     }
 

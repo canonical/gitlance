@@ -63,21 +63,46 @@ pub fn resolve_ref(repo: &Repository, refspec: &str) -> Result<Oid, CheckError> 
     })
 }
 
-/// Gets all commits in the range [base, head]
-/// Returns commits from base (exclusive) to head (inclusive)
+/// Lists all remote-tracking refs (`refs/remotes/*`) in the repository.
 ///
-/// Accepts any valid git revision specification for base and head:
+/// These represent everything already pushed to or fetched from any remote,
+/// and are used to determine which commits are genuinely new.
+pub fn remote_tracking_refs(repo: &Repository) -> Result<Vec<String>, CheckError> {
+    let refs = repo
+        .references_glob("refs/remotes/*")
+        .map_err(|e| CheckError::Git(format!("Failed to list remote-tracking refs: {}", e)))?;
+
+    let mut names = Vec::new();
+    for reference in refs {
+        let reference = reference
+            .map_err(|e| CheckError::Git(format!("Failed to read remote-tracking ref: {}", e)))?;
+        let name = reference
+            .name()
+            .map_err(|e| CheckError::Git(format!("Remote-tracking ref has invalid name: {}", e)))?;
+        names.push(name.to_string());
+    }
+
+    Ok(names)
+}
+
+/// Gets all commits reachable from `head` but not from any of `excludes`.
+///
+/// This is the core commit-selection routine. Each exclude ref is hidden from
+/// the revwalk, so the result contains only commits unique to `head`. Passing a
+/// single base gives a `base..head` range; passing all remote-tracking refs
+/// gives the commits that are not yet on any remote.
+///
+/// Accepts any valid git revision specification for `head` and each exclude:
 /// - Full/short SHAs, branches, tags, HEAD~n, etc.
 ///
 /// If `skip_merge_commits` is true, merge commits (commits with more than one parent)
 /// are excluded from the results.
-pub fn get_commits_in_range(
+pub fn get_commits_excluding(
     repo: &Repository,
-    base: &str,
     head: &str,
+    excludes: &[impl AsRef<str>],
     skip_merge_commits: bool,
 ) -> Result<Vec<Commit>, CheckError> {
-    let base_oid = resolve_ref(repo, base)?;
     let head_oid = resolve_ref(repo, head)?;
 
     let mut revwalk = repo
@@ -89,10 +114,14 @@ pub fn get_commits_in_range(
         .push(head_oid)
         .map_err(|e| CheckError::Git(format!("Failed to push head to revwalk: {}", e)))?;
 
-    // Don't include the base commit itself
-    revwalk
-        .hide(base_oid)
-        .map_err(|e| CheckError::Git(format!("Failed to hide base in revwalk: {}", e)))?;
+    // Hide each exclude ref so its commits (and their ancestors) are omitted
+    for exclude in excludes {
+        let exclude = exclude.as_ref();
+        let exclude_oid = resolve_ref(repo, exclude)?;
+        revwalk.hide(exclude_oid).map_err(|e| {
+            CheckError::Git(format!("Failed to hide '{}' in revwalk: {}", exclude, e))
+        })?;
+    }
 
     let mut commits = Vec::new();
 
@@ -119,6 +148,23 @@ pub fn get_commits_in_range(
     }
 
     Ok(commits)
+}
+
+/// Gets all commits in the range [base, head]
+/// Returns commits from base (exclusive) to head (inclusive)
+///
+/// Accepts any valid git revision specification for base and head:
+/// - Full/short SHAs, branches, tags, HEAD~n, etc.
+///
+/// If `skip_merge_commits` is true, merge commits (commits with more than one parent)
+/// are excluded from the results.
+pub fn get_commits_in_range(
+    repo: &Repository,
+    base: &str,
+    head: &str,
+    skip_merge_commits: bool,
+) -> Result<Vec<Commit>, CheckError> {
+    get_commits_excluding(repo, head, &[base], skip_merge_commits)
 }
 
 #[cfg(test)]
@@ -441,5 +487,104 @@ mod tests {
         // Test Clone
         let commit_clone = commit.clone();
         assert_eq!(commit_clone.sha, commit.sha);
+    }
+
+    #[test]
+    fn test_remote_tracking_refs_lists_remote_refs() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+
+        let base_sha = create_commit(&repo_path, "initial");
+
+        // Simulate a fetched remote-tracking ref by writing it directly.
+        run_cmd(
+            &repo_path,
+            "git",
+            &["update-ref", "refs/remotes/origin/main", &base_sha],
+        );
+
+        let refs = remote_tracking_refs(&repo).expect("Failed to list remote-tracking refs");
+        assert_eq!(refs, vec!["refs/remotes/origin/main".to_string()]);
+    }
+
+    #[test]
+    fn test_get_commits_excluding_empty_excludes_includes_root() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+
+        let _base_sha = create_commit(&repo_path, "initial");
+        let _sha1 = create_commit(&repo_path, "second commit");
+
+        // With no excludes, every commit reachable from head is returned,
+        // including the root commit that has no parent.
+        let commits = get_commits_excluding(&repo, "HEAD", &[] as &[&str], false)
+            .expect("Failed to get commits");
+
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[0].message.trim(), "second commit");
+        assert_eq!(commits[1].message.trim(), "initial");
+    }
+
+    #[test]
+    fn test_get_commits_excluding_head_fully_excluded_is_empty() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+
+        let _base_sha = create_commit(&repo_path, "initial");
+        let _sha1 = create_commit(&repo_path, "second commit");
+
+        // Excluding head itself leaves nothing new.
+        let commits =
+            get_commits_excluding(&repo, "HEAD", &["HEAD"], false).expect("Failed to get commits");
+
+        assert!(commits.is_empty());
+    }
+
+    #[test]
+    fn test_get_commits_excluding_via_remote_tracking_refs() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+
+        let _base_sha = create_commit(&repo_path, "initial");
+        let sha1 = create_commit(&repo_path, "second commit");
+        let _sha2 = create_commit(&repo_path, "third commit");
+
+        // Pretend the first two commits are already published on a remote.
+        run_cmd(
+            &repo_path,
+            "git",
+            &["update-ref", "refs/remotes/origin/main", &sha1],
+        );
+
+        let excludes = remote_tracking_refs(&repo).expect("Failed to list remote-tracking refs");
+        let commits =
+            get_commits_excluding(&repo, "HEAD", &excludes, false).expect("Failed to get commits");
+
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].message.trim(), "third commit");
     }
 }
