@@ -34,35 +34,34 @@ do
         continue
     fi
 
-    # Determine base commit
+    # Run gitlance
+    echo "Checking git commit logs with gitlance:"
+    echo
     if [ "$remote_oid" = "0000000000000000000000000000000000000000" ]; then
-        # New branch - try to find common ancestor with remote HEAD
-        base=""
-        if remote_head=$(git ls-remote "$remote" HEAD 2>/dev/null | awk '{print $1}') && [ -n "$remote_head" ]; then
-            base=$(git merge-base "$remote_head" "$local_oid" 2>/dev/null) || true
-        fi
-        # Fall back to root commit if no common ancestor found
-        if [ -z "$base" ]; then
-            base=$(git rev-list --max-parents=0 "$local_oid" | head -1)
+        # New branch: validate commits not yet present on any remote. gitlance
+        # derives the set from remote-tracking refs, which is more reliable than
+        # a single remote's HEAD (a stale remote would re-check known commits).
+        if ! gitlance --head "$local_oid" --not-on-remotes; then
+            echo ""
+            echo "Push rejected: Commit validation failed"
+            echo "To fix: git commit --amend, or git rebase -i"
+            echo "To bypass: git push --no-verify"
+            exit 1
         fi
     else
-        # Existing branch - find common ancestor to only check divergent commits
+        # Existing branch: check only commits that diverge from the remote.
         if ! base=$(git merge-base "$remote_oid" "$local_oid"); then
             echo "Error: Failed to find merge-base between remote and local commits"
             echo "To bypass: git push --no-verify"
             exit 1
         fi
-    fi
-
-    # Run gitlance
-    echo "Checking git commit logs with gitlance:"
-    echo
-    if ! gitlance --base "$base" --head "$local_oid"; then
-        echo ""
-        echo "Push rejected: Commit validation failed"
-        echo "To fix: git commit --amend, or git rebase -i $base"
-        echo "To bypass: git push --no-verify"
-        exit 1
+        if ! gitlance --base "$base" --head "$local_oid"; then
+            echo ""
+            echo "Push rejected: Commit validation failed"
+            echo "To fix: git commit --amend, or git rebase -i $base"
+            echo "To bypass: git push --no-verify"
+            exit 1
+        fi
     fi
 done
 

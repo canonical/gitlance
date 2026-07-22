@@ -29,8 +29,13 @@ struct Cli {
     #[arg(long, global = true)]
     skip_merge_commits: bool,
 
+    /// Validate only commits not yet present on any remote (requires --head,
+    /// mutually exclusive with --base). Exits successfully when nothing is new.
+    #[arg(long, global = true, conflicts_with = "base")]
+    not_on_remotes: bool,
+
     /// Validate a single commit message from file (e.g. .git/COMMIT_EDITMSG)
-    #[arg(long, global = true, conflicts_with_all = ["base", "head", "skip_merge_commits", "repo"])]
+    #[arg(long, global = true, conflicts_with_all = ["base", "head", "skip_merge_commits", "repo", "not_on_remotes"])]
     message_file: Option<std::path::PathBuf>,
 }
 
@@ -75,6 +80,48 @@ fn main() {
             Ok(message) => vec![git::Commit::from_message(message)],
             Err(e) => {
                 output::error(&format!("Failed to read '{}': {}", path.display(), e));
+                exit(1);
+            }
+        }
+    } else if cli.not_on_remotes {
+        // Validate only commits reachable from head but not from any remote.
+        let head = cli.head.or_else(|| std::env::var("HEAD_REF").ok());
+
+        let head = match head {
+            Some(h) => h,
+            None => {
+                output::error("Missing --head (or HEAD_REF)");
+                exit(1);
+            }
+        };
+
+        let repo = match git::open_repo(cli.repo.as_deref().unwrap_or(".")) {
+            Ok(r) => r,
+            Err(e) => {
+                output::error(&format!("Failed to open repository: {}", e));
+                exit(1);
+            }
+        };
+
+        let excludes = match git::remote_tracking_refs(&repo) {
+            Ok(refs) => refs,
+            Err(e) => {
+                output::error(&format!("Failed to list remote-tracking refs: {}", e));
+                exit(1);
+            }
+        };
+
+        match git::get_commits_excluding(&repo, &head, &excludes, cli.skip_merge_commits) {
+            // An empty result means every commit is already on a remote, so
+            // there is nothing new to validate. This is a clean pass, not an
+            // error: the revwalk semantics make emptiness a precise signal.
+            Ok(commits) if commits.is_empty() => {
+                println!("No new commits to check.");
+                exit(0);
+            }
+            Ok(commits) => commits,
+            Err(e) => {
+                output::error(&format!("Failed to get commits: {}", e));
                 exit(1);
             }
         }

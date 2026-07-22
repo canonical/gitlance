@@ -11,7 +11,9 @@ pub mod output;
 pub mod test_utils;
 
 pub use error::CheckError;
-pub use git::{get_commits_in_range, open_repo, resolve_ref};
+pub use git::{
+    get_commits_excluding, get_commits_in_range, open_repo, remote_tracking_refs, resolve_ref,
+};
 
 /// Length to abbreviate SHAs in output messages
 const SHA_ABBREV_LEN: usize = 8;

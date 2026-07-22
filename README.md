@@ -245,6 +245,17 @@ A specific check can also be selected:
 gitlance conventional-commits --message-file .git/COMMIT_EDITMSG
 ```
 
+### Validating Unpublished Commits
+
+With `--not-on-remotes`, gitlance validates only the commits reachable from
+`--head` that are not yet present on any remote. This makes it convenient to use
+in a local `pre-push` git hook. It exits successfully when there is nothing new
+to check:
+
+```bash
+gitlance --head <head_ref> --not-on-remotes
+```
+
 ## Installation
 
 ### GitHub Action
