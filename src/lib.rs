@@ -6,6 +6,7 @@ pub mod checks;
 pub mod config;
 pub mod credential_store;
 pub mod error;
+pub mod generate;
 pub mod git;
 pub mod output;
 
