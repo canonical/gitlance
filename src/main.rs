@@ -22,12 +22,21 @@ struct Cli {
     head: Option<String>,
 
     /// Git repository path
-    #[arg(long, global = true, default_value = ".")]
-    repo: String,
+    #[arg(long, global = true)]
+    repo: Option<String>,
 
     /// Skip merge commits in validation (default: false, all commits are checked)
     #[arg(long, global = true)]
     skip_merge_commits: bool,
+
+    /// Validate only commits not yet present on any remote (requires --head,
+    /// mutually exclusive with --base). Exits successfully when nothing is new.
+    #[arg(long, global = true, conflicts_with = "base")]
+    not_on_remotes: bool,
+
+    /// Validate a single commit message from file (e.g. .git/COMMIT_EDITMSG)
+    #[arg(long, global = true, conflicts_with_all = ["base", "head", "skip_merge_commits", "repo", "not_on_remotes"])]
+    message_file: Option<std::path::PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -65,56 +74,99 @@ fn main() {
     // Determine which checks to run
     let command = cli.command.unwrap_or(Commands::All);
 
-    // Get refs, with environment variable fallback
-    let base = cli.base.or_else(|| std::env::var("BASE_REF").ok());
-    let head = cli.head.or_else(|| std::env::var("HEAD_REF").ok());
+    // Get commits based on input mode
+    let commits = if let Some(path) = cli.message_file {
+        match std::fs::read_to_string(&path) {
+            Ok(message) => vec![git::Commit::from_message(message)],
+            Err(e) => {
+                output::error(&format!("Failed to read '{}': {}", path.display(), e));
+                exit(1);
+            }
+        }
+    } else if cli.not_on_remotes {
+        // Validate only commits reachable from head but not from any remote.
+        let head = cli.head.or_else(|| std::env::var("HEAD_REF").ok());
 
-    // Validate both refs before proceeding
-    let mut has_errors = false;
+        let head = match head {
+            Some(h) => h,
+            None => {
+                output::error("Missing --head (or HEAD_REF)");
+                exit(1);
+            }
+        };
 
-    if base.is_none() {
-        output::error(
-            "Missing base reference. Provide --base or set BASE_REF environment variable",
-        );
-        has_errors = true;
-    }
+        let repo = match git::open_repo(cli.repo.as_deref().unwrap_or(".")) {
+            Ok(r) => r,
+            Err(e) => {
+                output::error(&format!("Failed to open repository: {}", e));
+                exit(1);
+            }
+        };
 
-    if head.is_none() {
-        output::error(
-            "Missing head reference. Provide --head or set HEAD_REF environment variable",
-        );
-        has_errors = true;
-    }
+        let excludes = match git::remote_tracking_refs(&repo) {
+            Ok(refs) => refs,
+            Err(e) => {
+                output::error(&format!("Failed to list remote-tracking refs: {}", e));
+                exit(1);
+            }
+        };
 
-    if has_errors {
-        exit(1);
-    }
+        match git::get_commits_excluding(&repo, &head, &excludes, cli.skip_merge_commits) {
+            // An empty result means every commit is already on a remote, so
+            // there is nothing new to validate. This is a clean pass, not an
+            // error: the revwalk semantics make emptiness a precise signal.
+            Ok(commits) if commits.is_empty() => {
+                println!("No new commits to check.");
+                exit(0);
+            }
+            Ok(commits) => commits,
+            Err(e) => {
+                output::error(&format!("Failed to get commits: {}", e));
+                exit(1);
+            }
+        }
+    } else {
+        let base = cli.base.or_else(|| std::env::var("BASE_REF").ok());
+        let head = cli.head.or_else(|| std::env::var("HEAD_REF").ok());
 
-    let base = base.expect("base should be validated above");
-    let head = head.expect("head should be validated above");
+        let (base, head) = match (base, head) {
+            (Some(b), Some(h)) => (b, h),
+            (None, None) => {
+                output::error(
+                    "Provide --base and --head (or set BASE_REF/HEAD_REF), or use --message-file",
+                );
+                exit(1);
+            }
+            (None, Some(_)) => {
+                output::error("Missing --base (or BASE_REF)");
+                exit(1);
+            }
+            (Some(_), None) => {
+                output::error("Missing --head (or HEAD_REF)");
+                exit(1);
+            }
+        };
 
-    // Open repository
-    let repo = match git::open_repo(&cli.repo) {
-        Ok(r) => r,
-        Err(e) => {
-            output::error(&format!("Failed to open repository: {}", e));
-            exit(1);
+        let repo = match git::open_repo(cli.repo.as_deref().unwrap_or(".")) {
+            Ok(r) => r,
+            Err(e) => {
+                output::error(&format!("Failed to open repository: {}", e));
+                exit(1);
+            }
+        };
+
+        match git::get_commits_in_range(&repo, &base, &head, cli.skip_merge_commits) {
+            Ok(commits) if commits.is_empty() => {
+                output::notice("No commits found in the specified range");
+                exit(0);
+            }
+            Ok(commits) => commits,
+            Err(e) => {
+                output::error(&format!("Failed to get commits: {}", e));
+                exit(1);
+            }
         }
     };
-
-    // Get commits in range
-    let commits = match git::get_commits_in_range(&repo, &base, &head, cli.skip_merge_commits) {
-        Ok(commits) => commits,
-        Err(e) => {
-            output::error(&format!("Failed to get commits: {}", e));
-            exit(1);
-        }
-    };
-
-    if commits.is_empty() {
-        output::notice("No commits found in the specified range");
-        exit(0);
-    }
 
     // Display the commits being tested
     display_commits(&commits);
