@@ -296,4 +296,63 @@ mod tests {
             "Expected check to pass with HEAD~2 and HEAD references"
         );
     }
+
+    // ===== `suggest` command tests =====
+
+    #[test]
+    fn test_suggest_no_staged_changes() {
+        use assert_cmd::Command;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        create_commit(&repo_path, "initial");
+
+        let mut cmd = Command::cargo_bin("gitlance").expect("Failed to find binary");
+        cmd.env("OPENROUTER_API_KEY", "dummy-key");
+        cmd.args(["--repo", &repo_path, "suggest"]);
+
+        cmd.assert()
+            .failure()
+            .stdout(predicates::str::contains("No staged changes"));
+    }
+
+    #[test]
+    fn test_suggest_missing_api_key() {
+        use assert_cmd::Command;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        create_commit(&repo_path, "initial");
+
+        std::fs::write(
+            std::path::Path::new(&repo_path).join("new_file.txt"),
+            "hello\n",
+        )
+        .expect("Failed to write file");
+        run_cmd(&repo_path, "git", &["add", "new_file.txt"]);
+
+        let mut cmd = Command::cargo_bin("gitlance").expect("Failed to find binary");
+        cmd.env_remove("OPENROUTER_API_KEY");
+        // Isolate the credential store fallback so a real developer-machine
+        // credential (if any) doesn't leak into this test.
+        cmd.env(
+            "XDG_RUNTIME_DIR",
+            temp_dir.path().to_str().expect("valid path"),
+        );
+        cmd.args(["--repo", &repo_path, "suggest"]);
+
+        cmd.assert()
+            .failure()
+            .stdout(predicates::str::contains("No OpenRouter API key found"));
+    }
 }
