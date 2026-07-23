@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod checks;
+pub mod config;
 pub mod credential_store;
 pub mod error;
 pub mod git;
