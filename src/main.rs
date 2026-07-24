@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use clap::{Parser, Subcommand};
+use gitlance::credential_store::CredentialStoreFactory;
 use gitlance::{checks, git, output, run_check};
 use std::process::exit;
 
@@ -43,17 +44,61 @@ enum Commands {
 
     /// Run all checks (default if no command given)
     All,
+
+    /// Store your OpenRouter API key for `gitlance suggest` (overwrites any existing key)
+    Init,
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    let command = cli.command.take().unwrap_or(Commands::All);
 
-    // Determine which checks to run
-    let command = cli.command.unwrap_or(Commands::All);
+    match command {
+        Commands::Init => run_init(),
+        command => run_checks(command, &cli),
+    }
+}
 
+fn run_init() {
+    let store = match CredentialStoreFactory::create_store() {
+        Ok(store) => store,
+        Err(e) => {
+            output::error(&format!("Failed to initialize credential store: {}", e));
+            exit(1);
+        }
+    };
+
+    let overwriting = matches!(store.read_token(), Ok(Some(_)));
+
+    let api_key = match rpassword::prompt_password("OpenRouter API key: ") {
+        Ok(key) if !key.trim().is_empty() => key.trim().to_string(),
+        Ok(_) => {
+            output::error("No API key provided");
+            exit(1);
+        }
+        Err(e) => {
+            output::error(&format!("Failed to read API key: {}", e));
+            exit(1);
+        }
+    };
+
+    if let Err(e) = store.write_token(&api_key) {
+        output::error(&format!("Failed to store API key: {}", e));
+        exit(1);
+    }
+
+    let verb = if overwriting { "replaced" } else { "stored" };
+    output::notice(&format!(
+        "API key {} ({} credential store)",
+        verb,
+        store.get_name()
+    ));
+}
+
+fn run_checks(command: Commands, cli: &Cli) {
     // Get refs, with environment variable fallback
-    let base = cli.base.or_else(|| std::env::var("BASE_REF").ok());
-    let head = cli.head.or_else(|| std::env::var("HEAD_REF").ok());
+    let base = cli.base.clone().or_else(|| std::env::var("BASE_REF").ok());
+    let head = cli.head.clone().or_else(|| std::env::var("HEAD_REF").ok());
 
     // Validate both refs before proceeding
     let mut has_errors = false;
@@ -125,6 +170,9 @@ fn main() {
             wip_failures.is_empty()
                 && signoff_failures.is_empty()
                 && conventional_failures.is_empty()
+        }
+        Commands::Init => {
+            unreachable!("handled before run_checks")
         }
     };
 
