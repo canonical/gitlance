@@ -4,7 +4,8 @@
 
 use clap::{Parser, Subcommand};
 use gitlance::credential_store::CredentialStoreFactory;
-use gitlance::{checks, git, output, run_check};
+use gitlance::generate::{suggest_commit_message, OpenRouterProvider};
+use gitlance::{checks, config::Config, git, output, run_check};
 use std::process::exit;
 
 #[derive(Parser)]
@@ -47,6 +48,13 @@ enum Commands {
 
     /// Store your OpenRouter API key for `gitlance suggest` (overwrites any existing key)
     Init,
+
+    /// Generate a compliant commit message for the currently staged changes
+    Suggest {
+        /// Commit directly with the validated message instead of printing it
+        #[arg(long)]
+        commit: bool,
+    },
 }
 
 fn main() {
@@ -55,8 +63,18 @@ fn main() {
 
     match command {
         Commands::Init => run_init(),
+        Commands::Suggest { commit } => run_suggest(&cli.repo, commit),
         command => run_checks(command, &cli),
     }
+}
+
+/// Resolves the OpenRouter API key: `OPENROUTER_API_KEY` env var > stored credential.
+fn resolve_api_key() -> Option<String> {
+    std::env::var("OPENROUTER_API_KEY").ok().or_else(|| {
+        CredentialStoreFactory::create_store()
+            .ok()
+            .and_then(|store| store.read_token().ok().flatten())
+    })
 }
 
 fn run_init() {
@@ -93,6 +111,101 @@ fn run_init() {
         verb,
         store.get_name()
     ));
+}
+
+fn run_suggest(repo_path: &str, commit: bool) {
+    let api_key = match resolve_api_key() {
+        Some(key) => key,
+        None => {
+            output::error(
+                "No OpenRouter API key found. Set OPENROUTER_API_KEY or run `gitlance init`.",
+            );
+            exit(1);
+        }
+    };
+
+    let model = Config::load(repo_path).model;
+
+    let repo = match git::open_repo(repo_path) {
+        Ok(r) => r,
+        Err(e) => {
+            output::error(&format!("Failed to open repository: {}", e));
+            exit(1);
+        }
+    };
+
+    let diff = match git::get_staged_diff(&repo) {
+        Ok(diff) => diff,
+        Err(e) => {
+            output::error(&format!("Failed to read staged diff: {}", e));
+            exit(1);
+        }
+    };
+
+    if diff.trim().is_empty() {
+        output::error("No staged changes found. Stage changes with `git add` first.");
+        exit(1);
+    }
+
+    let identity = match git::get_git_identity(&repo) {
+        Ok(identity) => identity,
+        Err(e) => {
+            output::error(&format!("Failed to read git identity: {}", e));
+            exit(1);
+        }
+    };
+
+    let provider = OpenRouterProvider::new(api_key, model);
+
+    let message = match suggest_commit_message(&provider, &diff, &identity) {
+        Ok(message) => message,
+        Err(e) => {
+            output::error(&format!("Failed to generate commit message: {}", e));
+            exit(1);
+        }
+    };
+
+    if commit {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let mut child = match Command::new("git")
+            .current_dir(repo_path)
+            .args(["commit", "-F", "-"])
+            .stdin(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                output::error(&format!("Failed to run git commit: {}", e));
+                exit(1);
+            }
+        };
+
+        if let Some(mut stdin) = child.stdin.take() {
+            if let Err(e) = stdin.write_all(message.as_bytes()) {
+                output::error(&format!("Failed to write commit message: {}", e));
+                exit(1);
+            }
+        }
+
+        match child.wait() {
+            Ok(status) if status.success() => println!("{}", message),
+            Ok(status) => {
+                output::error(&format!(
+                    "git commit exited with status {:?}",
+                    status.code()
+                ));
+                exit(1);
+            }
+            Err(e) => {
+                output::error(&format!("Failed to wait for git commit: {}", e));
+                exit(1);
+            }
+        }
+    } else {
+        println!("{}", message);
+    }
 }
 
 fn run_checks(command: Commands, cli: &Cli) {
@@ -171,7 +284,7 @@ fn run_checks(command: Commands, cli: &Cli) {
                 && signoff_failures.is_empty()
                 && conventional_failures.is_empty()
         }
-        Commands::Init => {
+        Commands::Init | Commands::Suggest { .. } => {
             unreachable!("handled before run_checks")
         }
     };
