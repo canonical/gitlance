@@ -18,6 +18,64 @@ pub fn open_repo(repo_path: &str) -> Result<Repository, CheckError> {
         .map_err(|e| CheckError::Repository(format!("Failed to open repository: {}", e)))
 }
 
+/// Returns the staged changes (index vs. HEAD) as a unified diff string.
+///
+/// Returns an empty string if nothing is staged. If the repository has no
+/// commits yet (unborn HEAD), diffs the index against an empty tree so
+/// initial staged additions are still picked up.
+pub fn get_staged_diff(repo: &Repository) -> Result<String, CheckError> {
+    let head_tree = match repo.head() {
+        Ok(head_ref) => Some(
+            head_ref
+                .peel_to_tree()
+                .map_err(|e| CheckError::Git(format!("Failed to peel HEAD to tree: {}", e)))?,
+        ),
+        Err(e)
+            if e.code() == git2::ErrorCode::UnbornBranch
+                || e.code() == git2::ErrorCode::NotFound =>
+        {
+            None
+        }
+        Err(e) => return Err(CheckError::Git(format!("Failed to read HEAD: {}", e))),
+    };
+
+    let diff = repo
+        .diff_tree_to_index(head_tree.as_ref(), None, None)
+        .map_err(|e| CheckError::Git(format!("Failed to diff index against HEAD: {}", e)))?;
+
+    let mut buf = String::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let content = String::from_utf8_lossy(line.content());
+        if matches!(line.origin(), '+' | '-' | ' ') {
+            buf.push(line.origin());
+        }
+        buf.push_str(&content);
+        true
+    })
+    .map_err(|e| CheckError::Git(format!("Failed to render diff: {}", e)))?;
+
+    Ok(buf)
+}
+
+/// Reads the configured `user.name`/`user.email` identity, used for the
+/// auto-appended `Signed-off-by` trailer.
+pub fn get_git_identity(repo: &Repository) -> Result<(String, String), CheckError> {
+    let signature = repo
+        .signature()
+        .map_err(|e| CheckError::Git(format!("Failed to read git identity: {}", e)))?;
+
+    let name = signature
+        .name()
+        .map_err(|e| CheckError::Git(format!("user.name is not valid UTF-8: {}", e)))?
+        .to_string();
+    let email = signature
+        .email()
+        .map_err(|e| CheckError::Git(format!("user.email is not valid UTF-8: {}", e)))?
+        .to_string();
+
+    Ok((name, email))
+}
+
 /// Resolves a git reference (SHA, branch, tag, HEAD~n, etc.) to a commit OID.
 ///
 /// Accepts any valid git revision specification:
@@ -98,6 +156,117 @@ mod tests {
     use super::*;
     use crate::test_utils::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn test_get_staged_diff_empty_when_nothing_staged() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        create_commit(&repo_path, "initial");
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+
+        let diff = get_staged_diff(&repo).expect("get_staged_diff failed");
+        assert!(diff.is_empty());
+    }
+
+    #[test]
+    fn test_get_staged_diff_contains_staged_content() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        create_commit(&repo_path, "initial");
+
+        std::fs::write(
+            std::path::Path::new(&repo_path).join("new_file.txt"),
+            "hello world\n",
+        )
+        .expect("Failed to write file");
+        run_cmd(&repo_path, "git", &["add", "new_file.txt"]);
+
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+        let diff = get_staged_diff(&repo).expect("get_staged_diff failed");
+
+        assert!(diff.contains("new_file.txt"));
+        assert!(diff.contains("hello world"));
+    }
+
+    #[test]
+    fn test_get_staged_diff_no_commits_yet() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+
+        std::fs::write(
+            std::path::Path::new(&repo_path).join("new_file.txt"),
+            "hello world\n",
+        )
+        .expect("Failed to write file");
+        run_cmd(&repo_path, "git", &["add", "new_file.txt"]);
+
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+        let diff = get_staged_diff(&repo).expect("get_staged_diff failed");
+
+        assert!(diff.contains("new_file.txt"));
+    }
+
+    #[test]
+    fn test_get_staged_diff_includes_non_utf8_content_lossily() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        create_commit(&repo_path, "initial");
+
+        // Invalid UTF-8 bytes (no NUL byte, so git still treats it as text
+        // rather than binary) surrounded by valid ASCII.
+        let mut content = b"hello ".to_vec();
+        content.extend_from_slice(&[0xFF, 0xFE]);
+        content.extend_from_slice(b" world\n");
+        std::fs::write(
+            std::path::Path::new(&repo_path).join("non_utf8.txt"),
+            &content,
+        )
+        .expect("Failed to write file");
+        run_cmd(&repo_path, "git", &["add", "non_utf8.txt"]);
+
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+        let diff = get_staged_diff(&repo).expect("get_staged_diff failed");
+
+        assert!(diff.contains("non_utf8.txt"));
+        assert!(diff.contains("hello"));
+        assert!(diff.contains("world"));
+    }
+
+    #[test]
+    fn test_get_git_identity() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+
+        let (name, email) = get_git_identity(&repo).expect("get_git_identity failed");
+        assert_eq!(name, "Test User");
+        assert_eq!(email, "test@example.com");
+    }
 
     #[test]
     fn test_open_repo_success() {
