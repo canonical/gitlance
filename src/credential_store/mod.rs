@@ -11,9 +11,11 @@
 //! (e.g. headless CI without a D-Bus session).
 
 pub mod error;
+pub mod file_store;
 pub mod keyring_store;
 
 pub use error::CredentialStoreError;
+pub use file_store::FileCredentialStore;
 pub use keyring_store::KeyringCredentialStore;
 
 /// A store capable of persisting a single secret token (the OpenRouter API key).
