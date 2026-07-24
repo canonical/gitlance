@@ -18,6 +18,64 @@ pub fn open_repo(repo_path: &str) -> Result<Repository, CheckError> {
         .map_err(|e| CheckError::Repository(format!("Failed to open repository: {}", e)))
 }
 
+/// Returns the staged changes (index vs. HEAD) as a unified diff string.
+///
+/// Returns an empty string if nothing is staged. If the repository has no
+/// commits yet (unborn HEAD), diffs the index against an empty tree so
+/// initial staged additions are still picked up.
+pub fn get_staged_diff(repo: &Repository) -> Result<String, CheckError> {
+    let head_tree = match repo.head() {
+        Ok(head_ref) => Some(
+            head_ref
+                .peel_to_tree()
+                .map_err(|e| CheckError::Git(format!("Failed to peel HEAD to tree: {}", e)))?,
+        ),
+        Err(e)
+            if e.code() == git2::ErrorCode::UnbornBranch
+                || e.code() == git2::ErrorCode::NotFound =>
+        {
+            None
+        }
+        Err(e) => return Err(CheckError::Git(format!("Failed to read HEAD: {}", e))),
+    };
+
+    let diff = repo
+        .diff_tree_to_index(head_tree.as_ref(), None, None)
+        .map_err(|e| CheckError::Git(format!("Failed to diff index against HEAD: {}", e)))?;
+
+    let mut buf = String::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let content = String::from_utf8_lossy(line.content());
+        if matches!(line.origin(), '+' | '-' | ' ') {
+            buf.push(line.origin());
+        }
+        buf.push_str(&content);
+        true
+    })
+    .map_err(|e| CheckError::Git(format!("Failed to render diff: {}", e)))?;
+
+    Ok(buf)
+}
+
+/// Reads the configured `user.name`/`user.email` identity, used for the
+/// auto-appended `Signed-off-by` trailer.
+pub fn get_git_identity(repo: &Repository) -> Result<(String, String), CheckError> {
+    let signature = repo
+        .signature()
+        .map_err(|e| CheckError::Git(format!("Failed to read git identity: {}", e)))?;
+
+    let name = signature
+        .name()
+        .map_err(|e| CheckError::Git(format!("user.name is not valid UTF-8: {}", e)))?
+        .to_string();
+    let email = signature
+        .email()
+        .map_err(|e| CheckError::Git(format!("user.email is not valid UTF-8: {}", e)))?
+        .to_string();
+
+    Ok((name, email))
+}
+
 /// Resolves a git reference (SHA, branch, tag, HEAD~n, etc.) to a commit OID.
 ///
 /// Accepts any valid git revision specification:
