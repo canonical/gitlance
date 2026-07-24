@@ -158,6 +158,117 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    fn test_get_staged_diff_empty_when_nothing_staged() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        create_commit(&repo_path, "initial");
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+
+        let diff = get_staged_diff(&repo).expect("get_staged_diff failed");
+        assert!(diff.is_empty());
+    }
+
+    #[test]
+    fn test_get_staged_diff_contains_staged_content() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        create_commit(&repo_path, "initial");
+
+        std::fs::write(
+            std::path::Path::new(&repo_path).join("new_file.txt"),
+            "hello world\n",
+        )
+        .expect("Failed to write file");
+        run_cmd(&repo_path, "git", &["add", "new_file.txt"]);
+
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+        let diff = get_staged_diff(&repo).expect("get_staged_diff failed");
+
+        assert!(diff.contains("new_file.txt"));
+        assert!(diff.contains("hello world"));
+    }
+
+    #[test]
+    fn test_get_staged_diff_no_commits_yet() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+
+        std::fs::write(
+            std::path::Path::new(&repo_path).join("new_file.txt"),
+            "hello world\n",
+        )
+        .expect("Failed to write file");
+        run_cmd(&repo_path, "git", &["add", "new_file.txt"]);
+
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+        let diff = get_staged_diff(&repo).expect("get_staged_diff failed");
+
+        assert!(diff.contains("new_file.txt"));
+    }
+
+    #[test]
+    fn test_get_staged_diff_includes_non_utf8_content_lossily() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        create_commit(&repo_path, "initial");
+
+        // Invalid UTF-8 bytes (no NUL byte, so git still treats it as text
+        // rather than binary) surrounded by valid ASCII.
+        let mut content = b"hello ".to_vec();
+        content.extend_from_slice(&[0xFF, 0xFE]);
+        content.extend_from_slice(b" world\n");
+        std::fs::write(
+            std::path::Path::new(&repo_path).join("non_utf8.txt"),
+            &content,
+        )
+        .expect("Failed to write file");
+        run_cmd(&repo_path, "git", &["add", "non_utf8.txt"]);
+
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+        let diff = get_staged_diff(&repo).expect("get_staged_diff failed");
+
+        assert!(diff.contains("non_utf8.txt"));
+        assert!(diff.contains("hello"));
+        assert!(diff.contains("world"));
+    }
+
+    #[test]
+    fn test_get_git_identity() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = create_test_repo(
+            temp_dir
+                .path()
+                .to_str()
+                .expect("Failed to convert temp dir path to string"),
+        );
+        let repo = open_repo(&repo_path).expect("Failed to open repo");
+
+        let (name, email) = get_git_identity(&repo).expect("get_git_identity failed");
+        assert_eq!(name, "Test User");
+        assert_eq!(email, "test@example.com");
+    }
+
+    #[test]
     fn test_open_repo_success() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let repo_path = create_test_repo(
