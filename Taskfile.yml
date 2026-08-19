@@ -130,7 +130,8 @@ tasks:
     cmds:
       - task: fmt-check
       - task: lint
-      - task: reuse
+      - cmd: task reuse
+        if: '[ "{{.SKIP_REUSE}}" != "true" ]'
       - task: coverage
 
   validate-fix:
