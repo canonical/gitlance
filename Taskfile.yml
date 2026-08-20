@@ -21,15 +21,14 @@ tasks:
 
   install-githooks:
     desc: "Install git hooks for commit validation"
-    vars:
-      HOOKS_DIR:
-        sh: git rev-parse --git-path hooks
+    preconditions:
+      - sh: pre-commit --version
+        msg: "pre-commit is required: https://pre-commit.com/#install"
+      - sh: gitlance --help
+        msg: "gitlance must be installed and available in PATH: cargo install --path . --locked"
     cmds:
-      - cp githooks/pre-push "{{.HOOKS_DIR}}/"
-      - chmod +x "{{.HOOKS_DIR}}/pre-push"
-      - cp githooks/commit-msg "{{.HOOKS_DIR}}/"
-      - chmod +x "{{.HOOKS_DIR}}/commit-msg"
-      - echo "✓ Git hooks installed to {{.HOOKS_DIR}}"
+      - pre-commit install
+      - echo "✓ Git hooks installed with pre-commit"
 
   setup:
     desc: "Setup Rust toolchain and development environment"

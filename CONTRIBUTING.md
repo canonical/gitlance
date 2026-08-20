@@ -17,6 +17,21 @@ Contributions are welcome! Please follow these guidelines.
 5. Add `Signed-off-by` trailer to commits
 6. Open a pull request
 
+### Local commit validation
+
+Gitlance can validate commit messages and pushed commits locally. Install
+[pre-commit](https://pre-commit.com/#install), install the local Gitlance
+binary, and register both hooks:
+
+```console
+cargo install --path . --locked
+task install-githooks
+```
+
+The installation is idempotent. If a `commit-msg` or `pre-push` hook already
+exists, pre-commit preserves it as a legacy hook and runs it alongside
+Gitlance. Running `pre-commit uninstall` restores the previous hooks.
+
 ## Commit Requirements
 
 - Use conventional format: `feat:`, `fix:`, `docs:`, etc.
