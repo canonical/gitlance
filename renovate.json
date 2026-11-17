@@ -8,7 +8,9 @@
   "configMigration": true,
   "semanticCommits": "enabled",
   "commitBodyTable": true,
-  "dependencyDashboardAutoclose": true,
+  "dependencyDashboard": {
+    "autoclose": true
+  },
   "labels": ["dependencies"],
   "schedule": ["before 6am on Monday"],
   "timezone": "UTC",
